@@ -1,0 +1,7 @@
+-- Chess club schema. Applied to the shared rveuli Supabase project.
+-- Anyone reads; only a row in chess_admins writes.
+-- See the project's SQL editor for the live copy.
+--
+-- Tables: chess_admins, chess_players, chess_games, chess_events,
+--         chess_tournaments
+-- Ratings are not stored — the client replays the game log.
