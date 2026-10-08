@@ -113,16 +113,24 @@ function GameForm({ state, onToast }) {
       setError("თარიღი არასწორია.");
       return;
     }
-    addGame({
-      whiteId,
-      blackId,
-      result: Number(result),
-      type,
-      playedAt: at.toISOString(),
-      note: null,
-    });
-    setError(null);
-    onToast(`პარტია დაემატა — ${scoreLine(Number(result))}`);
+    save();
+
+    async function save() {
+      try {
+        await addGame({
+          whiteId,
+          blackId,
+          result: Number(result),
+          type,
+          playedAt: at.toISOString(),
+          note: null,
+        });
+        setError(null);
+        onToast(`პარტია დაემატა — ${scoreLine(Number(result))}`);
+      } catch {
+        setError("ვერ შევინახე. შეამოწმე კავშირი და უფლებები.");
+      }
+    }
   }
 
   return (
@@ -236,8 +244,9 @@ function GameForm({ state, onToast }) {
           }`,
           meta: `${scoreLine(g.result)}, ${formatDate(g.playedAt, { short: true })}`,
           onRemove: () => {
-            removeGame(g.id);
-            onToast("პარტია წაიშალა");
+            removeGame(g.id)
+              .then(() => onToast("პარტია წაიშალა"))
+              .catch(() => onToast("ვერ წავშალე", { tone: "error" }));
           },
         }))}
       />
@@ -274,11 +283,14 @@ function PlayerForm({ state, onToast }) {
       setError("კლასი აუცილებელია.");
       return;
     }
-    addPlayer({ name: name.trim(), klass: klass.trim() });
-    setName("");
-    setKlass("");
-    setError(null);
-    onToast("მოთამაშე დაემატა, რეიტინგი 1000");
+    addPlayer({ name: name.trim(), klass: klass.trim() })
+      .then(() => {
+        setName("");
+        setKlass("");
+        setError(null);
+        onToast("მოთამაშე დაემატა, რეიტინგი 1000");
+      })
+      .catch(() => setError("ვერ შევინახე. შეამოწმე კავშირი და უფლებები."));
   }
 
   return (
@@ -320,8 +332,9 @@ function PlayerForm({ state, onToast }) {
           main: p.name,
           meta: `${p.klass}, რეიტინგი ${p.rating}`,
           onRemove: () => {
-            removePlayer(p.id);
-            onToast("მოთამაშე და მისი პარტიები წაიშალა");
+            removePlayer(p.id)
+              .then(() => onToast("მოთამაშე და მისი პარტიები წაიშალა"))
+              .catch(() => onToast("ვერ წავშალე", { tone: "error" }));
           },
         }))}
       />
@@ -358,12 +371,15 @@ function EventForm({ state, onToast }) {
       location: location.trim() || "სკოლა",
       note: note.trim() || null,
       startsAt: at.toISOString(),
-    });
-    setTitle("");
-    setLocation("");
-    setNote("");
-    setError(null);
-    onToast("ღონისძიება დაემატა");
+    })
+      .then(() => {
+        setTitle("");
+        setLocation("");
+        setNote("");
+        setError(null);
+        onToast("ღონისძიება დაემატა");
+      })
+      .catch(() => setError("ვერ შევინახე. შეამოწმე კავშირი და უფლებები."));
   }
 
   return (
@@ -439,8 +455,9 @@ function EventForm({ state, onToast }) {
           main: e.title,
           meta: formatDate(e.startsAt, { short: true }),
           onRemove: () => {
-            removeEvent(e.id);
-            onToast("ღონისძიება წაიშალა");
+            removeEvent(e.id)
+              .then(() => onToast("ღონისძიება წაიშალა"))
+              .catch(() => onToast("ვერ წავშალე", { tone: "error" }));
           },
         }))}
       />
