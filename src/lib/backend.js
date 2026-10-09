@@ -96,23 +96,23 @@ export async function load() {
   };
 }
 
+/** The tables a change to which should refresh every open phone. */
+const LIVE_TABLES = [
+  "chess_games",
+  "chess_players",
+  "chess_events",
+  "chess_tournaments",
+];
+
 /** Live updates, so a result entered at the board appears on every phone. */
 export async function watch(onChange) {
   const sb = await supabase();
   if (!sb) return () => {};
-  const channel = sb
-    .channel("chess")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "chess_games" },
-      onChange,
-    )
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "chess_players" },
-      onChange,
-    )
-    .subscribe();
+  const channel = LIVE_TABLES.reduce(
+    (ch, table) =>
+      ch.on("postgres_changes", { event: "*", schema: "public", table }, onChange),
+    sb.channel("chess"),
+  ).subscribe();
   return () => sb.removeChannel(channel);
 }
 
@@ -151,6 +151,38 @@ export async function insertEvent(e) {
     location: e.location,
     note: e.note ?? null,
   });
+  if (error) throw error;
+}
+
+export async function insertTournament(t) {
+  const sb = await supabase();
+  const { error } = await sb.from("chess_tournaments").insert({
+    name: t.name,
+    status: t.status ?? "live",
+    format: t.format ?? null,
+    started_at: t.startedAt ?? new Date().toISOString(),
+    rounds: t.rounds ?? [],
+    winner_id: t.winnerId ?? null,
+    runner_up_id: t.runnerUpId ?? null,
+  });
+  if (error) throw error;
+}
+
+/**
+ * A bracket is edited match by match, so the patch carries only what the
+ * admin just changed — the rest of the row stays as the database has it.
+ */
+export async function patchTournament(id, patch) {
+  const sb = await supabase();
+  const row = {};
+  if ("name" in patch) row.name = patch.name;
+  if ("status" in patch) row.status = patch.status;
+  if ("format" in patch) row.format = patch.format;
+  if ("rounds" in patch) row.rounds = patch.rounds;
+  if ("winnerId" in patch) row.winner_id = patch.winnerId;
+  if ("runnerUpId" in patch) row.runner_up_id = patch.runnerUpId;
+
+  const { error } = await sb.from("chess_tournaments").update(row).eq("id", id);
   if (error) throw error;
 }
 

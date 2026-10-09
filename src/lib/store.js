@@ -341,21 +341,42 @@ export async function removeEvent(eventId) {
   });
 }
 
-export const addTournament = (t) =>
+export async function addTournament(t) {
+  if (backend.isRemote) {
+    await backend.insertTournament(t);
+    return;
+  }
   mutate((s) => {
-    s.tournaments.push({ id: id(), rounds: [], ...t });
+    s.tournaments.push({
+      id: id(),
+      status: "live",
+      rounds: [],
+      startedAt: new Date().toISOString(),
+      ...t,
+    });
   });
+}
 
-export const updateTournament = (tid, patch) =>
+export async function updateTournament(tid, patch) {
+  if (backend.isRemote) {
+    await backend.patchTournament(tid, patch);
+    return;
+  }
   mutate((s) => {
     const t = s.tournaments.find((x) => x.id === tid);
     if (t) Object.assign(t, patch);
   });
+}
 
-export const removeTournament = (tid) =>
+export async function removeTournament(tid) {
+  if (backend.isRemote) {
+    await backend.removeRow("chess_tournaments", tid);
+    return;
+  }
   mutate((s) => {
     s.tournaments = s.tournaments.filter((t) => t.id !== tid);
   });
+}
 
 /** Throw everything away and return to the seeded club. */
 export const resetAll = () =>

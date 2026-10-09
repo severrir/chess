@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { Plus, Trash2, UserPlus, CalendarPlus, RotateCcw } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Plus,
+  Trash2,
+  Trophy,
+  UserPlus,
+  CalendarPlus,
+  RotateCcw,
+} from "lucide-react";
 import { Field, inputClass } from "./Sheet.jsx";
 import { Pill } from "./LeaderboardView.jsx";
 import {
@@ -10,13 +17,23 @@ import {
   scoreLine,
 } from "../lib/elo.js";
 import {
+  BRACKET_SIZES,
+  SCORES,
+  buildBracket,
+  recordMatch,
+  roundNames,
+} from "../lib/bracket.js";
+import {
   addEvent,
   addGame,
   addPlayer,
+  addTournament,
   removeEvent,
   removeGame,
   removePlayer,
+  removeTournament,
   resetAll,
+  updateTournament,
 } from "../lib/store.js";
 import {
   formatDate,
@@ -56,11 +73,17 @@ export default function AdminView({ state, onToast }) {
         <Pill active={tab === "event"} onClick={() => setTab("event")}>
           ღონისძიება
         </Pill>
+        <Pill active={tab === "tournament"} onClick={() => setTab("tournament")}>
+          ტურნირი
+        </Pill>
       </div>
 
       {tab === "game" && <GameForm state={state} onToast={onToast} />}
       {tab === "player" && <PlayerForm state={state} onToast={onToast} />}
       {tab === "event" && <EventForm state={state} onToast={onToast} />}
+      {tab === "tournament" && (
+        <TournamentPanel state={state} onToast={onToast} />
+      )}
 
       <section className="mt-2 border-t border-rule pt-4">
         <h2 className="font-serif text-base text-ivory-2">საშიში ზონა</h2>
@@ -461,6 +484,366 @@ function EventForm({ state, onToast }) {
           },
         }))}
       />
+    </form>
+  );
+}
+
+/* ---------------------------------------------------------------- *
+ * Tournaments — draw a bracket, then fill it in as it is played
+ * ---------------------------------------------------------------- */
+
+function TournamentPanel({ state, onToast }) {
+  const live = state.tournaments.filter((t) => t.status === "live");
+  const [openId, setOpenId] = useState(live[0]?.id ?? "");
+  const current = live.find((t) => t.id === openId) ?? live[0] ?? null;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {current ? (
+        <section>
+          {live.length > 1 && (
+            <Field label="ტურნირი">
+              <select
+                value={current.id}
+                onChange={(e) => setOpenId(e.target.value)}
+                className={inputClass}
+              >
+                {live.map((t) => (
+                  <option key={t.id} value={t.id} className="bg-board-700">
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <BracketEditor
+            key={current.id}
+            state={state}
+            tournament={current}
+            onToast={onToast}
+          />
+        </section>
+      ) : (
+        <p className="sheet px-4 py-6 text-center text-sm text-ivory-2">
+          მიმდინარე ტურნირი არ არის — დახაზე ახალი ბადე ქვემოთ.
+        </p>
+      )}
+
+      <NewTournamentForm state={state} onToast={onToast} />
+
+      <RecentList
+        title="ტურნირები"
+        items={state.tournaments.map((t) => ({
+          id: t.id,
+          main: t.name,
+          meta:
+            t.status === "live"
+              ? `მიმდინარე, ${formatDate(t.startedAt, { short: true })}`
+              : `გამარჯვებული ${state.playersById[t.winnerId]?.name ?? "—"}`,
+          onRemove: () => {
+            removeTournament(t.id)
+              .then(() => onToast("ტურნირი წაიშალა"))
+              .catch(() => onToast("ვერ წავშალე", { tone: "error" }));
+          },
+        }))}
+      />
+    </div>
+  );
+}
+
+/**
+ * The bracket, one round under the next. Tapping a name declares the
+ * winner and carries them down immediately — the public page is reading
+ * the same rounds, so the bracket is live in the plainest sense.
+ */
+function BracketEditor({ state, tournament, onToast }) {
+  const [scores, setScores] = useState({});
+  const [busy, setBusy] = useState(false);
+
+  const rounds = tournament.rounds ?? [];
+
+  async function pick(ri, mi, winnerId) {
+    const key = `${ri}-${mi}`;
+    const next = recordMatch(
+      rounds,
+      ri,
+      mi,
+      winnerId,
+      scores[key] ?? SCORES[0],
+    );
+    setBusy(true);
+    try {
+      await updateTournament(tournament.id, {
+        rounds: next.rounds,
+        status: next.status,
+        winnerId: next.winnerId,
+        runnerUpId: next.runnerUpId,
+      });
+      onToast(
+        next.status === "finished"
+          ? `ტურნირი დასრულდა — ${state.playersById[next.winnerId]?.name ?? ""}`
+          : "ბადე განახლდა",
+      );
+    } catch {
+      onToast("ვერ შევინახე. შეამოწმე კავშირი და უფლებები.", {
+        tone: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (rounds.length === 0) {
+    return (
+      <p className="sheet mt-3 px-4 py-6 text-center text-sm text-ivory-2">
+        ამ ტურნირს ბადე არ აქვს.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-5">
+      {rounds.map((round, ri) => (
+        <section key={round.name}>
+          <h2 className="font-serif text-base text-ivory-2">{round.name}</h2>
+
+          <ul className="mt-2 flex flex-col gap-2">
+            {round.matches.map((m, mi) => {
+              const key = `${ri}-${mi}`;
+              const ready = Boolean(m.a && m.b);
+              return (
+                <li key={key} className="sheet overflow-hidden">
+                  {["a", "b"].map((side, i) => {
+                    const pid = m[side];
+                    const p = state.playersById[pid];
+                    const won = m.winner && m.winner === pid;
+                    return (
+                      <div key={side}>
+                        {i === 1 && <div className="h-px bg-rule" />}
+                        <button
+                          type="button"
+                          disabled={!ready || busy}
+                          onClick={() => pick(ri, mi, pid)}
+                          aria-pressed={Boolean(won)}
+                          className={`flex min-h-12 w-full items-center gap-2 px-3 text-left transition-colors disabled:opacity-50 ${
+                            m.winner && !won ? "opacity-55" : ""
+                          } ${ready ? "hover:bg-board-700/60" : ""}`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-5 w-[2px] shrink-0 rounded-full ${
+                              won ? "bg-gold" : "bg-board-600"
+                            }`}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm text-ivory">
+                            {p?.name ?? "ელოდება"}
+                          </span>
+                          {p && (
+                            <span className="tnum shrink-0 text-meta text-ivory-3">
+                              {p.rating}
+                            </span>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex items-center gap-2 border-t border-rule px-3 py-2">
+                    {m.winner ? (
+                      <>
+                        <span className="tnum flex-1 text-meta text-ivory-3">
+                          {m.score ?? "ჩაწერილია"}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => pick(ri, mi, null)}
+                          className="min-h-11 text-meta text-ivory-3 transition-colors hover:text-loss"
+                        >
+                          გაუქმება
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <label
+                          htmlFor={`score-${key}`}
+                          className="text-meta text-ivory-3"
+                        >
+                          ანგარიში
+                        </label>
+                        <select
+                          id={`score-${key}`}
+                          value={scores[key] ?? SCORES[0]}
+                          onChange={(e) =>
+                            setScores((s) => ({ ...s, [key]: e.target.value }))
+                          }
+                          disabled={!ready}
+                          className="tnum min-h-11 rounded-lg border border-board-600 bg-transparent px-2 text-sm text-ivory"
+                        >
+                          {SCORES.map((s) => (
+                            <option key={s} value={s} className="bg-board-700">
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="flex-1 text-right text-meta text-ivory-3">
+                          {ready ? "აირჩიე გამარჯვებული" : "ელოდება"}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function NewTournamentForm({ state, onToast }) {
+  const [name, setName] = useState("");
+  const [size, setSize] = useState(8);
+  const [picked, setPicked] = useState([]);
+  const [error, setError] = useState(null);
+
+  // Strongest first, because the seeding pairs 1 against the lowest seed.
+  const ladder = useMemo(
+    () => [...state.players].sort((a, b) => b.rating - a.rating),
+    [state.players],
+  );
+
+  const toggle = (id) =>
+    setPicked((list) =>
+      list.includes(id)
+        ? list.filter((x) => x !== id)
+        : list.length >= size
+          ? list
+          : [...list, id],
+    );
+
+  async function submit(e) {
+    e.preventDefault();
+    if (name.trim().length < 2) {
+      setError("დასახელება აუცილებელია.");
+      return;
+    }
+    if (picked.length !== size) {
+      setError(`აირჩიე ზუსტად ${size} მოთამაშე.`);
+      return;
+    }
+    // Seed by rating, whatever order they were tapped in.
+    const seeded = ladder.filter((p) => picked.includes(p.id)).map((p) => p.id);
+
+    try {
+      await addTournament({
+        name: name.trim(),
+        status: "live",
+        format: `ნოკაუტი, ${size} მოთამაშე`,
+        startedAt: new Date().toISOString(),
+        rounds: buildBracket(seeded),
+        winnerId: null,
+        runnerUpId: null,
+      });
+      setName("");
+      setPicked([]);
+      setError(null);
+      onToast("ბადე დაიხაზა");
+    } catch {
+      setError("ვერ შევინახე. შეამოწმე კავშირი და უფლებები.");
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-col gap-4 border-t border-rule pt-5"
+    >
+      <h2 className="font-serif text-base text-ivory-2">ახალი ბადე</h2>
+
+      <Field label="დასახელება">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="შემოდგომის ჩემპიონატი"
+          maxLength={60}
+          className={inputClass}
+        />
+      </Field>
+
+      <fieldset>
+        <legend className="mb-1.5 text-sm text-ivory-2">მონაწილეთა რიცხვი</legend>
+        <div className="grid grid-cols-3 gap-2">
+          {BRACKET_SIZES.map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={size === n}
+              onClick={() => {
+                setSize(n);
+                setPicked((list) => list.slice(0, n));
+              }}
+              className={`tnum min-h-12 rounded-lg border text-base transition-colors ${
+                size === n
+                  ? "border-gold bg-gold-dim/30 text-ivory"
+                  : "border-board-600 text-ivory-2 hover:bg-board-700"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1.5 text-meta text-ivory-3">
+          {roundNames(size).join(" → ")}
+        </p>
+      </fieldset>
+
+      <fieldset>
+        <legend className="mb-1.5 text-sm text-ivory-2">
+          მონაწილეები — არჩეულია {picked.length}/{size}
+        </legend>
+        <div className="flex max-h-72 flex-col gap-1 overflow-y-auto rounded-lg border border-board-600 p-1">
+          {ladder.map((p) => {
+            const on = picked.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggle(p.id)}
+                className={`flex min-h-11 items-center gap-2 rounded-md px-2.5 text-left transition-colors ${
+                  on ? "bg-gold-dim/30 text-ivory" : "text-ivory-2 hover:bg-board-700"
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`grid size-4 shrink-0 place-items-center rounded-sm border ${
+                    on ? "border-gold bg-gold" : "border-board-600"
+                  }`}
+                >
+                  {on && (
+                    <span className="block size-1.5 rounded-sm bg-board-900" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm">{p.name}</span>
+                <span className="tnum shrink-0 text-meta text-ivory-3">
+                  {p.klass} · {p.rating}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      {error && (
+        <p role="alert" className="text-sm text-loss">
+          {error}
+        </p>
+      )}
+
+      <Submit icon={Trophy}>ბადის დახაზვა</Submit>
     </form>
   );
 }
