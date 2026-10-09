@@ -1,11 +1,11 @@
-import { Crown, Lock, LogOut } from "lucide-react";
+import { Crown, Download, Lock, LogOut } from "lucide-react";
 
 /**
  * The header stays put while the page scrolls, so the club and the current
  * role are always answerable. The blur keeps the title legible over moving
  * content; it is not decoration.
  */
-export default function Navbar({ admin, onAdmin, onSignOut }) {
+export default function Navbar({ admin, onAdmin, onSignOut, onNotebook }) {
   return (
     <header className="sticky top-0 z-30 border-b border-rule bg-board-900/92 backdrop-blur-md">
       <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
@@ -26,6 +26,17 @@ export default function Navbar({ admin, onAdmin, onSignOut }) {
             </span>
           </p>
         </div>
+
+        {/* The club on paper: one file, works with the Wi-Fi off. */}
+        <button
+          type="button"
+          onClick={onNotebook}
+          aria-label="რვეულის ჩამოტვირთვა"
+          className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-board-600 px-3 text-sm text-ivory-2 transition-colors hover:bg-board-700 hover:text-ivory"
+        >
+          <Download size={16} strokeWidth={1.75} />
+          <span className="hidden sm:inline">რვეული</span>
+        </button>
 
         {admin ? (
           <button

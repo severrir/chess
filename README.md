@@ -53,6 +53,20 @@ table re-derives itself.
 Hash routes, so any screen can be sent to a classmate and the back button
 behaves — and GitHub Pages needs no rewrite rules.
 
+## The notebook you can download
+
+The **რვეული** button in the header writes the whole club to a single
+self-contained HTML file — `chess-rveuli-2026-10-09.html` — and hands it to
+the browser. No network, no build, no app: it opens on any phone, works
+with the Wi-Fi off, and prints onto A4, which is how a ladder ends up
+pinned to the club door.
+
+It is re-set for ink rather than screen: cream paper with a ruled line, the
+board as a faint watermark, and gold dropped to an ochre a school printer
+can actually hold. Inside: the crown, the full ladder, the class table,
+every live bracket, the game log and the calendar — with a contents page,
+because it is a notebook.
+
 ## Tournaments
 
 The admin panel draws a knockout for 4, 8 or 16 players, seeded by rating

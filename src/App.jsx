@@ -12,6 +12,7 @@ import Sheet, { Field, inputClass } from "./components/Sheet.jsx";
 import Toast from "./components/Toast.jsx";
 import Watermark from "./components/Watermark.jsx";
 
+import { downloadNotebook } from "./lib/notebook.js";
 import { useStore } from "./hooks/useStore.js";
 import { useToast } from "./hooks/useToast.js";
 import { REMOTE_AUTH, isAdmin, signIn, signOut, subscribeAuth } from "./lib/auth.js";
@@ -70,6 +71,13 @@ export default function App() {
 
       <Navbar
         admin={admin}
+        onNotebook={() => {
+          try {
+            show(`რვეული ჩამოიტვირთა — ${downloadNotebook(state)}`);
+          } catch {
+            show("რვეული ვერ შეიქმნა", { tone: "error" });
+          }
+        }}
         onAdmin={() => setLoginOpen(true)}
         onSignOut={() => {
           signOut();
